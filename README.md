@@ -12,12 +12,12 @@ Ce dépôt contient une petite API écrite avec FastAPI et un tableau de bord St
 - `Makefile` — cibles pratiques (test, build, up, down, etc.).
 - `.env.example` — exemples de variables d'environnement (ne pas committer vos secrets).
 
-## Liens rapides (exemples)
+## Liens rapides 
 
 - API publique (exemple) : https://devops-monitor-api-web.azurewebsites.net
 - Dashboard public (exemple) : https://devops-monitor-dashboard-web.azurewebsites.net
 
-Remplacez ces URLs par celles de votre déploiement lorsque vous mettez en production.
+Remplacez ces URLs par celles de mon déploiement lorsque vous mettez en production.
 
 ## Démarrage local
 
@@ -66,7 +66,7 @@ docker build -t devops-monitor-dashboard -f dashboard/Dockerfile dashboard
 docker run -p 8501:8501 --env-file .env devops-monitor-dashboard
 ```
 
-## Déploiement recommandé (Azure)
+## Déploiement 
 
 Pattern recommandé : construire des images Docker, les pousser dans Azure Container Registry (ACR) puis configurer des Azure Web Apps (Linux) pour tirer les images depuis ACR.
 
@@ -77,7 +77,7 @@ Points de sécurité et bonnes pratiques
 - Configurez `WEBSITES_PORT` pour correspondre au port exposé par le container (API: 8000, Dashboard: 8501).
 - Activez WebSockets sur l'App Service API si vous souhaitez utiliser `wss://`.
 
-CI/CD (conseil)
+CI/CD 
 
 Un pipeline CI/CD typique :
 

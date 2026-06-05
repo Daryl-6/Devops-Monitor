@@ -1,6 +1,12 @@
 from dataclasses import dataclass, field
 from pydantic import BaseModel, Field
 
+try:
+    # When imported as package 'api'
+    __package__
+except Exception:
+    pass
+
 @dataclass
 class Server:
     """Représentation interne en mémoire d'un serveur surveillé."""

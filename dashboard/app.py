@@ -1,3 +1,4 @@
+import os
 import json
 import time
 import httpx
@@ -5,8 +6,17 @@ import pandas as pd
 import streamlit as st
 import websockets
 
-API_BASE = "http://localhost:8000"
-WS_BASE = "ws://localhost:8000"
+# Read API base URL from environment (set this in Azure WebApp app settings)
+API_BASE = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
+
+# Derive websocket base automatically: use wss for https, ws for http
+if API_BASE.startswith("https://"):
+    # Force secure WebSocket in production when API is exposed via HTTPS
+    WS_BASE = API_BASE.replace("https://", "wss://", 1)
+elif API_BASE.startswith("http://"):
+    WS_BASE = API_BASE.replace("http://", "ws://", 1)
+else:
+    WS_BASE = os.getenv("WS_BASE_URL", "ws://localhost:8000")
 
 st.set_page_config(page_title="DevOps Monitor Dashboard", page_icon="📊", layout="wide")
 
@@ -78,11 +88,27 @@ with tab_metrics:
     tiles_placeholder = st.empty()
     chart_placeholder = st.empty()
     
+    # Afficher l'état de santé rapide de l'API
+    try:
+        with httpx.Client(timeout=2.0) as _hc:
+            h = _hc.get(f"{API_BASE}/health")
+            if h.status_code == 200:
+                st.metric("API Health", "OK")
+            else:
+                st.metric("API Health", f"{h.status_code}")
+    except Exception:
+        st.metric("API Health", "OFFLINE")
+
     # Connexion directe par WebSocket (Non-bloquant / Pas de loop st.rerun infini)
     try:
         import asyncio
+        import ssl
+
         async def listen_ws():
-            async with websockets.connect(f"{WS_BASE}/ws/metrics") as ws:
+            ssl_ctx = None
+            if WS_BASE.startswith("wss://"):
+                ssl_ctx = ssl.create_default_context()
+            async with websockets.connect(f"{WS_BASE}/ws/metrics", ssl=ssl_ctx) as ws:
                 while True:
                     msg = await ws.recv()
                     data = json.loads(msg)
@@ -113,7 +139,44 @@ with tab_metrics:
                     time.sleep(1) # Temporisation locale d'un cycle
                     
         # Lancement sécurisé de la boucle d'écoute
-        asyncio.run(listen_ws())
+        try:
+            asyncio.run(listen_ws())
+        except Exception:
+            # Fallback: si le WebSocket n'est pas joignable, on bascule en polling HTTP
+            try:
+                with httpx.Client(timeout=3.0) as client:
+                    while True:
+                        try:
+                            resp = client.get(f"{API_BASE}/metrics")
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                # même rendu que pour WS
+                                st.session_state.metrics_history.append({
+                                    "Horodatage": time.strftime("%H:%M:%S"),
+                                    "CPU %": data["cpu_percent"],
+                                    "RAM %": data["memory_percent"]
+                                })
+                                if len(st.session_state.metrics_history) > 60:
+                                    st.session_state.metrics_history.pop(0)
+
+                                with tiles_placeholder.container():
+                                    c1, c2, c3, c4 = st.columns(4)
+                                    c1.metric("Charge CPU", f"{data['cpu_percent']:.1f} %")
+                                    c2.metric("Mémoire Vive (RAM)", f"{data['memory_percent']:.1f} %", f"{data['memory_used_gb']} / {data['memory_total_gb']} GB")
+                                    c3.metric("Espace Disque (/)", f"{data['disk_percent']:.1f} %")
+                                    c4.metric("Canal de Données", "🔵 HTTP Polling")
+
+                                with chart_placeholder.container():
+                                    df = pd.DataFrame(st.session_state.metrics_history)
+                                    df = df.set_index("Horodatage")
+                                    st.line_chart(df, height=220)
+
+                        except Exception:
+                            # si l'appel échoue, on affiche le warning et retente
+                            st.warning("🔄 Connexion impossible à l'API (polling). Nouvelle tentative dans 3s...")
+                        time.sleep(1)
+            except Exception:
+                st.warning("🔄 Connexion au flux de métriques en cours d'établissement ou l'API est hors-ligne.")
     except Exception:
         st.warning("🔄 Connexion au flux de métriques en cours d'établissement ou l'API est hors-ligne.")
         if st.button("Tenter une reconnexion manuelle"):

@@ -1,0 +1,57 @@
+name: CI-CD Deploy (DRAFT)
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run tests
+        run: pytest tests/ -v --cov=api --cov-fail-under=75
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to ACR
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+      - name: Build and push API image
+        run: |
+          docker build -f api/Dockerfile -t ${{ secrets.ACR_LOGIN_SERVER }}/devops-monitor-api:${{ github.sha }} .
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/devops-monitor-api:${{ github.sha }}
+      - name: Build and push Dashboard image
+        run: |
+          docker build -f dashboard/Dockerfile -t ${{ secrets.ACR_LOGIN_SERVER }}/devops-monitor-dashboard:${{ github.sha }} .
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/devops-monitor-dashboard:${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Update API WebApp
+        run: |
+          az webapp config container set --name devops-monitor-api-web --resource-group devops-monitor-rg --docker-custom-image-name ${{ secrets.ACR_LOGIN_SERVER }}/devops-monitor-api:${{ github.sha }}
+      - name: Update Dashboard WebApp
+        run: |
+          az webapp config container set --name devops-monitor-dashboard-web --resource-group devops-monitor-rg --docker-custom-image-name ${{ secrets.ACR_LOGIN_SERVER }}/devops-monitor-dashboard:${{ github.sha }}

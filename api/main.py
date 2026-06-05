@@ -4,10 +4,18 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Depends, WebSocket, WebSocketDisconnect
 
-from api.models import Server, ServerIn, ServerOut
-from api.auth import verify_api_key
-from api.metrics import get_system_metrics
-from api.poller import run_poll_loop, poll_server
+try:
+    # Preferred (when package is importable as `api`)
+    from api.models import Server, ServerIn, ServerOut
+    from api.auth import verify_api_key
+    from api.metrics import get_system_metrics
+    from api.poller import run_poll_loop, poll_server
+except ModuleNotFoundError:
+    # Fallback for tests that insert the `api/` folder on sys.path
+    from models import Server, ServerIn, ServerOut
+    from auth import verify_api_key
+    from metrics import get_system_metrics
+    from poller import run_poll_loop, poll_server
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)

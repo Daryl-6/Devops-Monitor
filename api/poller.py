@@ -1,7 +1,10 @@
 import asyncio
 import logging
 import httpx
-from api.models import Server
+try:
+    from api.models import Server
+except ModuleNotFoundError:
+    from models import Server
 
 logger = logging.getLogger(__name__)
 
